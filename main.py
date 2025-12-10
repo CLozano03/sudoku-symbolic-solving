@@ -13,7 +13,7 @@ try:
         clips_solver,
         googleORTools_solver,
         prolog_solver,
-        # pysat_solver,
+        pysat_solver,
         z3_solver,
     )
 except ImportError as e:
@@ -90,8 +90,7 @@ def validate_solution(grid):
 # --- Benchmark Logic ---
 
 
-def run_benchmark():
-    # 1. Find files
+def run_benchmark(solvers):
     sudoku_files = glob.glob("sudokus/*.txt")
     if not sudoku_files:
         print("No .txt files found in the 'sudokus/' folder.")
@@ -99,22 +98,10 @@ def run_benchmark():
 
     print(f"--- Starting Benchmark with {len(sudoku_files)} sudokus ---\n")
 
-    # 2. Define solvers
-    solvers = [
-        ("Google OR-Tools", googleORTools_solver),
-        ("Z3 Solver", z3_solver),
-        ("Prolog (PySwip)", prolog_solver),
-        # ("CLIPS", clips_solver),
-        # ("PySAT (Glucose4)", pysat_solver),
-    ]
-
-    # 3. Initialize statistics
-    # Structure: {'SolverName': {'times': [], 'failures': 0, 'errors': 0}}
     stats = {
         name: {"times": [], "failures": 0, "errors": 0} for name, _ in solvers
     }
 
-    # 4. Run tests
     for i, file_path in enumerate(sudoku_files):
         file_name = os.path.basename(file_path)
         base_sudoku = read_sudoku(file_path)
@@ -144,7 +131,6 @@ def run_benchmark():
                 stats[name]["errors"] += 1
                 # print(f"  [!] Error in {name}: {e}")
 
-    # 5. Generate Final Report
     print_results_table(stats, len(sudoku_files))
 
 
@@ -155,7 +141,6 @@ def print_results_table(stats, total_sudokus):
     )
     print("=" * 85)
 
-    # Process data for ranking
     # Ranking criteria:
     # 1. Highest number of solved puzzles (descending)
     # 2. Lowest average time (ascending)
@@ -200,4 +185,11 @@ def print_results_table(stats, total_sudokus):
 
 
 if __name__ == "__main__":
-    run_benchmark()
+    solvers = [
+        ("Google OR-Tools", googleORTools_solver),
+        ("Z3 Solver", z3_solver),
+        ("Prolog (PySwip)", prolog_solver),
+        # ("CLIPS", clips_solver),
+        ("PySAT (Glucose4)", pysat_solver),
+    ]
+    run_benchmark(solvers)
