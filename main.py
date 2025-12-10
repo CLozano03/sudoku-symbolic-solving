@@ -1,19 +1,26 @@
 import copy
+import glob
 import math
+import os
+import re
+import statistics
 import sys
 import time
 
+# Import solvers
 try:
     from solvers import (
         clips_solver,
         googleORTools_solver,
         prolog_solver,
-        pysat_solver,
+        # pysat_solver,
         z3_solver,
     )
 except ImportError as e:
     print(f"Error importing modules: {e}")
     sys.exit(1)
+
+# --- Helper Functions (Reading and Validation) ---
 
 
 def read_sudoku(file_path):
@@ -22,128 +29,175 @@ def read_sudoku(file_path):
     try:
         with open(file_path, "r") as f:
             for line in f:
-                row = [int(num) for num in line.strip().split()]
+                nums = re.findall(r"\d+", line)
+                row = [int(num) for num in nums]
                 if row:
                     grid.append(row)
         return grid
-    except FileNotFoundError:
-        print(f"FileNotFoundError: {file_path} not found.")
-        sys.exit(1)
-
-
-def print_grid(grid):
-    """Helper to visualize the result in the console."""
-    for row in grid:
-        print(" ".join(str(n) for n in row))
+    except Exception as e:
+        print(f"Error reading {file_path}: {e}")
+        return None
 
 
 def check_filled(grid):
-    """
-    Checks if the grid is completely filled (contains no zeros).
-    Returns True if filled, False if any empty cell remains.
-    """
+    """Checks if the grid is completely filled (no zeros)."""
     return all(cell != 0 for row in grid for cell in row)
 
 
 def check_correct(grid):
     """
-    Validates if the Sudoku solution is correct according to the rules:
+    Validates if the Sudoku solution is correct according to rules:
     1. Rows contain unique numbers from 1 to N.
     2. Columns contain unique numbers from 1 to N.
     3. Blocks (boxes) contain unique numbers from 1 to N.
     """
     N = len(grid)
     M = int(math.isqrt(N))
-
     if M * M != N:
-        print(f"Error: Invalid grid size {N}x{N} (N is not a perfect square).")
         return False
-
-    # The expected set of numbers for every row/col/box: {1, 2, ..., N}
     expected_set = set(range(1, N + 1))
 
-    # --- A) Check ROWS ---
+    # Check Rows
     for row in grid:
-        # Converting to set removes duplicates and ignores order
         if set(row) != expected_set:
             return False
 
-    # --- B) Check COLUMNS ---
+    # Check Columns
     for c in range(N):
-        # Construct the column list iterating through rows
         column = [grid[r][c] for r in range(N)]
         if set(column) != expected_set:
             return False
 
-    # --- C) Check BLOCKS (Boxes) ---
-    # Iterate through the top-left corner of each block
+    # Check Blocks
     for box_row_start in range(0, N, M):
         for box_col_start in range(0, N, M):
             block = []
-            # Iterate through cells inside the block
             for i in range(M):
                 for j in range(M):
                     block.append(grid[box_row_start + i][box_col_start + j])
-
             if set(block) != expected_set:
                 return False
-
     return True
 
 
 def validate_solution(grid):
+    """Combines filling check and logic check."""
+    if not grid:
+        return False
     return check_filled(grid) and check_correct(grid)
 
 
-def run_solver(name, module, original_sudoku):
-    print(f"--- Running: {name} ---")
-
-    # Deep copy to avoid in-place modifications affecting other solvers
-    input_grid = copy.deepcopy(original_sudoku)
-
-    start_time = time.time()
-    try:
-        # Call the standardized solve() function
-        result = module.solve(input_grid)
-        end_time = time.time()
-
-        elapsed_time = end_time - start_time
-
-        if result and validate_solution(result):
-            print(f"Solved in {elapsed_time:.5f} seconds!")
-            print_grid(result)
-        else:
-            print("No solution found.")
-
-    except Exception as e:
-        print(f"Error during execution of {name}: {e}")
-    print("\n")
+# --- Benchmark Logic ---
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python main.py <sudoku_file>")
+def run_benchmark():
+    # 1. Find files
+    sudoku_files = glob.glob("sudokus/*.txt")
+    if not sudoku_files:
+        print("No .txt files found in the 'sudokus/' folder.")
         sys.exit(1)
 
-    sudoku_path = sys.argv[1]
-    base_sudoku = read_sudoku(sudoku_path)
+    print(f"--- Starting Benchmark with {len(sudoku_files)} sudokus ---\n")
 
-    print(
-        f"Sudoku loaded ({len(base_sudoku)}x{len(base_sudoku[0])}) from {sudoku_path}\n"
-    )
-
-    # List of tuples (Readable Name, Imported Module)
+    # 2. Define solvers
     solvers = [
-        ("Google OR-Tools (CP-SAT)", googleORTools_solver),
-        ("Z3 Solver (SMT)", z3_solver),
+        ("Google OR-Tools", googleORTools_solver),
+        ("Z3 Solver", z3_solver),
         ("Prolog (PySwip)", prolog_solver),
-        ("CLIPS", clips_solver),
-        ("PySAT (Glucose4)", pysat_solver),
+        # ("CLIPS", clips_solver),
+        # ("PySAT (Glucose4)", pysat_solver),
     ]
 
-    for name, mod in solvers:
-        run_solver(name, mod, base_sudoku)
+    # 3. Initialize statistics
+    # Structure: {'SolverName': {'times': [], 'failures': 0, 'errors': 0}}
+    stats = {
+        name: {"times": [], "failures": 0, "errors": 0} for name, _ in solvers
+    }
+
+    # 4. Run tests
+    for i, file_path in enumerate(sudoku_files):
+        file_name = os.path.basename(file_path)
+        base_sudoku = read_sudoku(file_path)
+
+        if not base_sudoku:
+            continue
+
+        print(f"[{i + 1}/{len(sudoku_files)}] Processing: {file_name}")
+
+        for name, module in solvers:
+            # Deep copy to ensure fresh input for every solver
+            input_grid = copy.deepcopy(base_sudoku)
+
+            start_time = time.time()
+            try:
+                # Execute solver
+                result = module.solve(input_grid)
+                end_time = time.time()
+                elapsed = end_time - start_time
+
+                if result and validate_solution(result):
+                    stats[name]["times"].append(elapsed)
+                else:
+                    stats[name]["failures"] += 1
+            except Exception:
+                # Catch execution errors (crashes)
+                stats[name]["errors"] += 1
+                # print(f"  [!] Error in {name}: {e}")
+
+    # 5. Generate Final Report
+    print_results_table(stats, len(sudoku_files))
+
+
+def print_results_table(stats, total_sudokus):
+    print("\n" + "=" * 85)
+    print(
+        f"{'RANK':<5} | {'SOLVER':<20} | {'SOLVED':<8} | {'AVG TIME (s)':<12} | {'MIN (s)':<8} | {'MAX (s)':<8}"
+    )
+    print("=" * 85)
+
+    # Process data for ranking
+    # Ranking criteria:
+    # 1. Highest number of solved puzzles (descending)
+    # 2. Lowest average time (ascending)
+    ranking_data = []
+
+    for name, data in stats.items():
+        solved_count = len(data["times"])
+        if solved_count > 0:
+            avg_time = statistics.mean(data["times"])
+            min_time = min(data["times"])
+            max_time = max(data["times"])
+        else:
+            avg_time = float("inf")
+            min_time = 0
+            max_time = 0
+
+        ranking_data.append(
+            {
+                "name": name,
+                "solved": solved_count,
+                "avg": avg_time,
+                "min": min_time,
+                "max": max_time,
+            }
+        )
+
+    # Sort
+    ranking_data.sort(key=lambda x: (-x["solved"], x["avg"]))
+
+    for rank, item in enumerate(ranking_data, 1):
+        solved_str = f"{item['solved']}/{total_sudokus}"
+        avg_str = f"{item['avg']:.4f}" if item["solved"] > 0 else "-"
+        min_str = f"{item['min']:.4f}" if item["solved"] > 0 else "-"
+        max_str = f"{item['max']:.4f}" if item["solved"] > 0 else "-"
+
+        print(
+            f"{rank:<5} | {item['name']:<20} | {solved_str:<8} | {avg_str:<12} | {min_str:<8} | {max_str:<8}"
+        )
+
+    print("=" * 85)
+    print(f"Total sudokus processed: {total_sudokus}")
 
 
 if __name__ == "__main__":
-    main()
+    run_benchmark()
