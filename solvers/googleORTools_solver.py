@@ -21,9 +21,7 @@ def solve(grid):
             # Use 'grid' directly to read initial values
             if grid[i][j] != 0:
                 # Constant value
-                grid_vars[i, j] = model.NewIntVar(
-                    grid[i][j], grid[i][j], f"cell_{i}_{j}"
-                )
+                grid_vars[i, j] = model.NewIntVar(grid[i][j], grid[i][j], f"cell_{i}_{j}")
             else:
                 grid_vars[i, j] = model.NewIntVar(1, N, f"cell_{i}_{j}")
 
@@ -58,3 +56,4 @@ def solve(grid):
         return grid  # Return the reference to the modified matrix
     else:
         return None
+
