@@ -1,17 +1,19 @@
 import copy
 import glob
 import math
-import os
 import re
 import statistics
 import sys
 import time
+
+from tqdm import tqdm
 
 # Import solvers
 try:
     from solvers import (
         clips_solver,
         googleORTools_solver,
+        naive_backtracking,
         prolog_solver,
         pysat_solver,
         z3_solver,
@@ -102,14 +104,11 @@ def run_benchmark(solvers):
         name: {"times": [], "failures": 0, "errors": 0} for name, _ in solvers
     }
 
-    for i, file_path in enumerate(sudoku_files):
-        file_name = os.path.basename(file_path)
+    for file_path in tqdm(sudoku_files, desc="Processing Sudokus"):
         base_sudoku = read_sudoku(file_path)
 
         if not base_sudoku:
             continue
-
-        print(f"[{i + 1}/{len(sudoku_files)}] Processing: {file_name}")
 
         for name, module in solvers:
             # Deep copy to ensure fresh input for every solver
@@ -189,7 +188,7 @@ if __name__ == "__main__":
         ("Google OR-Tools", googleORTools_solver),
         ("Z3 Solver", z3_solver),
         ("Prolog (PySwip)", prolog_solver),
-        # ("CLIPS", clips_solver),
+        ("Naive Backtracking", naive_backtracking),
         ("PySAT (Glucose4)", pysat_solver),
     ]
     run_benchmark(solvers)
