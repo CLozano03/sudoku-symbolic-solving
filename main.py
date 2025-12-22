@@ -1,6 +1,7 @@
 import copy
 import glob
 import math
+import os
 import re
 import statistics
 import sys
@@ -14,6 +15,8 @@ try:
         clips_solver,
         googleORTools_solver,
         naive_backtracking,
+        # llm_solver,
+        picat_solver,
         prolog_solver,
         pysat_solver,
         z3_solver,
@@ -90,47 +93,66 @@ def validate_solution(grid):
 
 
 # --- Benchmark Logic ---
+def run_benchmark(solvers, base_path="sudokus"):
+    size_dirs = [
+        d
+        for d in os.listdir(base_path)
+        if os.path.isdir(os.path.join(base_path, d))
+    ]
 
+    os.makedirs("results", exist_ok=True)
 
-def run_benchmark(solvers):
-    sudoku_files = glob.glob("sudokus/*.txt")
-    if not sudoku_files:
-        print("No .txt files found in the 'sudokus/' folder.")
-        sys.exit(1)
+    if not size_dirs:
+        print(f"No subdirs in '{base_path}/'.")
+        return
 
-    print(f"--- Starting Benchmark with {len(sudoku_files)} sudokus ---\n")
-
-    stats = {
-        name: {"times": [], "failures": 0, "errors": 0} for name, _ in solvers
-    }
-
-    for file_path in tqdm(sudoku_files, desc="Processing Sudokus"):
-        base_sudoku = read_sudoku(file_path)
-
-        if not base_sudoku:
+    for size_label in sorted(size_dirs):
+        if size_label in ["25x25"]:
+            print(
+                f"Skipping benchmark for size '{size_label}' due to high computation time."
+            )
             continue
 
-        for name, module in solvers:
-            # Deep copy to ensure fresh input for every solver
-            input_grid = copy.deepcopy(base_sudoku)
+        current_dir = os.path.join(base_path, size_label)
+        sudoku_files = glob.glob(os.path.join(current_dir, "*.txt"))
 
-            start_time = time.time()
-            try:
-                # Execute solver
-                result = module.solve(input_grid)
-                end_time = time.time()
-                elapsed = end_time - start_time
+        if not sudoku_files:
+            continue
 
-                if result and validate_solution(result):
-                    stats[name]["times"].append(elapsed)
-                else:
-                    stats[name]["failures"] += 1
-            except Exception:
-                # Catch execution errors (crashes)
-                stats[name]["errors"] += 1
-                # print(f"  [!] Error in {name}: {e}")
+        print(f"--- Starting Benchmark with {len(sudoku_files)} sudokus ---\n")
 
-    print_results_table(stats, len(sudoku_files))
+        stats = {
+            name: {"times": [], "failures": 0, "errors": 0}
+            for name, _ in solvers
+        }
+
+        for file_path in tqdm(sudoku_files, desc="Processing Sudokus"):
+            base_sudoku = read_sudoku(file_path)
+
+            if not base_sudoku:
+                continue
+
+            for name, module in solvers:
+                # Deep copy to ensure fresh input for every solver
+                input_grid = copy.deepcopy(base_sudoku)
+
+                start_time = time.time()
+                try:
+                    # Execute solver
+                    result = module.solve(input_grid)
+                    end_time = time.time()
+                    elapsed = end_time - start_time
+
+                    if result and validate_solution(result):
+                        stats[name]["times"].append(elapsed)
+                    else:
+                        stats[name]["failures"] += 1
+                except Exception:
+                    # Catch execution errors (crashes)
+                    stats[name]["errors"] += 1
+                    # print(f"  [!] Error in {name}: {e}")
+
+        print_results_table(stats, len(sudoku_files))
 
 
 def print_results_table(stats, total_sudokus):
@@ -185,10 +207,12 @@ def print_results_table(stats, total_sudokus):
 
 if __name__ == "__main__":
     solvers = [
+        # ("CLIPS", clips_solver),
         ("Google OR-Tools", googleORTools_solver),
-        ("Z3 Solver", z3_solver),
-        ("Prolog (PySwip)", prolog_solver),
-        ("Naive Backtracking", naive_backtracking),
+        # ("Z3 Solver", z3_solver),
+        # ("Prolog (PySwip)", prolog_solver),
+        ("Picat Solver", picat_solver),
+        # ("Naive Backtracking", naive_backtracking),
         ("PySAT (Glucose4)", pysat_solver),
     ]
     run_benchmark(solvers)
