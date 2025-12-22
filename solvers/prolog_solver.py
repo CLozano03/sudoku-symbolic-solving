@@ -1,5 +1,6 @@
 import os
 import tempfile
+import math
 
 from pyswip import Prolog
 
@@ -7,24 +8,44 @@ from pyswip import Prolog
 PROLOG_CODE = """
 :- use_module(library(clpfd)).
 
-% Main predicate to solve the Sudoku
-sudoku_solve(Rows) :-
-    length(Rows, 9), maplist(same_length(Rows), Rows),
-    append(Rows, Vs), Vs ins 1..9,
+% sudoku_solve(+Rows, +K)
+sudoku_solve(Rows, K) :-
+    length(Rows, N),
+    maplist(same_length(Rows), Rows),
+
+    K*K #= N,
+
+    append(Rows, Vs),
+    Vs ins 1..N,
+
     maplist(all_distinct, Rows),
     transpose(Rows, Columns),
     maplist(all_distinct, Columns),
-    Rows = [As,Bs,Cs,Ds,Es,Fs,Gs,Hs,Is],
-    blocks(As, Bs, Cs),
-    blocks(Ds, Es, Fs),
-    blocks(Gs, Hs, Is),
+
+    blocks(Rows, K),
     maplist(label, Rows).
 
-% Helper predicate to validate 3x3 blocks
-blocks([], [], []).
-blocks([N1,N2,N3|Ns1], [N4,N5,N6|Ns2], [N7,N8,N9|Ns3]) :-
-    all_distinct([N1,N2,N3,N4,N5,N6,N7,N8,N9]),
-    blocks(Ns1, Ns2, Ns3).
+% ---------- BLOQUES KxK ----------
+
+blocks([], _).
+blocks(Rows, K) :-
+    length(RowsBlock, K),
+    append(RowsBlock, RestRows, Rows),
+    blocks_in_rows(RowsBlock, K),
+    blocks(RestRows, K).
+
+blocks_in_rows(Rows, K) :-
+    maplist(split_k(K), Rows, Heads, Tails),
+    append(Heads, Block),
+    all_distinct(Block),
+    (   maplist(=([]), Tails)
+    ->  true
+    ;   blocks_in_rows(Tails, K)
+    ).
+
+split_k(K, Row, Head, Tail) :-
+    length(Head, K),
+    append(Head, Tail, Row).
 """
 
 # Initialize a global Prolog instance
@@ -52,38 +73,46 @@ finally:
 
 
 def solve(grid):
-    """
-    Receives a Sudoku matrix (9x9) and solves it IN-PLACE using the pre-loaded Prolog logic.
-    Returns the same matrix reference with the solved values.
+    import math
 
-    If no solution is found or the grid is not 9x9, returns None.
-    """
-
-    # Validation: Ensure the grid is 9x9
-    if len(grid) != 9 or len(grid[0]) != 9:
-        print("Error: This Prolog solver is strictly for 9x9 Sudokus.")
+    N = len(grid)
+    if any(len(row) != N for row in grid):
+        print("Error: Grid must be NxN")
         return None
 
+    K = int(math.sqrt(N))
+    if K * K != N:
+        print("Error: N must be a perfect square")
+        return None
+
+    sudoku_str = grid_to_prolog(grid)
+    query_string = f"Rows = {sudoku_str}, sudoku_solve(Rows, {K})"
+
     try:
-        sudoku_str = str(grid).replace("0", "_")
-        query_string = f"Rows = {sudoku_str}, sudoku_solve(Rows)"
-
-        # Execute Query
         solutions = list(prolog.query(query_string))
-
-        if solutions:
-            # PySwip returns a list of dictionaries.
-            solved_rows = solutions[0]["Rows"]
-
-            # Update the original grid IN-PLACE
-            for i in range(9):
-                for j in range(9):
-                    grid[i][j] = int(solved_rows[i][j])
-
-            return grid
-        else:
+        if not solutions:
             return None
+
+        solved_rows = solutions[0]["Rows"]
+        for i in range(N):
+            for j in range(N):
+                grid[i][j] = int(solved_rows[i][j])
+
+        return grid
 
     except Exception as e:
         print(f"Prolog Error: {e}")
         return None
+    
+def grid_to_prolog(grid):
+    rows = []
+    for row in grid:
+        prolog_row = []
+        for cell in row:
+            if cell == 0:
+                prolog_row.append("_")
+            else:
+                prolog_row.append(str(cell))
+        rows.append(f"[{', '.join(prolog_row)}]")
+    return f"[{', '.join(rows)}]"
+
