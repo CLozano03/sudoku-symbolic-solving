@@ -20,6 +20,7 @@ try:
         prolog_solver,
         pysat_solver,
         z3_solver,
+        pulp_solver
     )
 except ImportError as e:
     print(f"Error importing modules: {e}")
@@ -214,5 +215,6 @@ if __name__ == "__main__":
         ("Picat Solver", picat_solver),
         # ("Naive Backtracking", naive_backtracking),
         ("PySAT (Glucose4)", pysat_solver),
+        ("PuLP Solver", pulp_solver),
     ]
     run_benchmark(solvers)
